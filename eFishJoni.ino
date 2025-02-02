@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include <Ultrasonic.h>
 #include <Adafruit_ADS1X15.h>
+#include <WiFiManager.h> 
 
 Adafruit_ADS1115 ads;  // Inisialisasi ADS1115
 
@@ -34,19 +35,22 @@ Ultrasonic ultrasonic(TRIG_PIN1, ECHO_PIN1);
 #define RELAY_DRAIN 12
 #define RELAY_FILL 13
 #define LED_PIN 2
+#define RESET_PIN 15
 
 // Konfigurasi LCD
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // Variabel waktu
 DateTime now;
+//Variabel Wifi Manager
+WiFiManager wm;
 
 //variabel turbidity arduino uno
 int turbidityValue = 0;
 
 // Variabel dan Konstanta
-const int minWaterLevel = 30;        // cm (batas air minimum)
-const int maxWaterLevel = 20;        // cm (batas air maksimum)
+const int minWaterLevel = 30;       // cm (batas air minimum)
+const int maxWaterLevel = 20;       // cm (batas air maksimum)
 const int turbidityThreshold = 30;  // Sesuaikan dengan nilai sensor
 
 const float tinggiWadah = 35.0;              // cm
@@ -74,10 +78,24 @@ void setup() {
   Serial.begin(115200);
 
   // Inisialisasi WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  if (wm.autoConnect()) {
+    // Jika terhubung ke Wi-Fi
+    digitalWrite(2, LOW);  // Matikan LED jika sudah terhubung ke WiFi
+    Serial.println("Tersambung ke Wi-Fi!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    // Jika gagal menghubungkan, masuk ke portal konfigurasi
+    Serial.println("Gagal menghubungkan ke Wi-Fi, masuk ke mode AP...");
+    for (int i = 0; i < 10; i++) {
+      digitalWrite(2, HIGH);
+      delay(200);
+      digitalWrite(2, LOW);
+      delay(200);
+      digitalWrite(2, HIGH);
+    }
+    wm.startConfigPortal("Jfish", "12345678");  // Portal Wi-Fi
+    Serial.println("Mode AP aktif, membuka portal konfigurasi...");
   }
 
   Serial.println("WiFi connected");
@@ -117,6 +135,9 @@ void setup() {
   pinMode(TRIG_PIN2, OUTPUT);
   pinMode(ECHO_PIN2, INPUT);
 
+  // Inisialisasi Pin RESET
+  pinMode(RESET_PIN, INPUT_PULLUP);
+
   // Ambil jadwal pakan dari Firebase
   ambilJadwalPakan();
 
@@ -126,11 +147,31 @@ void setup() {
 
 void loop() {
   // Cek status WiFi
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi tidak terhubung");
-    lcd.setCursor(0, 3);
-    lcd.print("WiFi tidak terhubung");
-    return;
+  if (digitalRead(RESET_PIN) == LOW || WiFi.status() != WL_CONNECTED) {
+    Serial.println("Masuk Ke Mode Access Point");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Mode Wi-Fi : Jfish");
+    lcd.setCursor(0, 1);
+    lcd.print("Akses configurasi");
+    lcd.setCursor(0, 2);
+    lcd.print("192.168.4.1");
+
+    // Menyalakan LED saat tombol reset ditekan
+    for (int i = 0; i < 10; i++) {
+      digitalWrite(2, HIGH);
+      delay(200);
+      digitalWrite(2, LOW);
+      delay(200);
+      digitalWrite(2, HIGH);
+    }
+
+    delay(1000);                                // Debounce
+    wm.resetSettings();                         // Reset semua kredensial WiFi tersimpan
+    wm.startConfigPortal("Jfish", "12345678");  // Portal Wi-Fi
+
+    Serial.println("Konfigurasi selesai, restart ESP32.");
+    ESP.restart();  // Restart setelah konfigurasi
   }
 
   // Mendapatkan waktu dari RTC
@@ -190,7 +231,7 @@ void pengurasan() {
   Serial.println("Mulai pengurasan...");
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Mulai pengurasan..."); 
+  lcd.print("Mulai pengurasan...");
 
   digitalWrite(RELAY_DRAIN, HIGH);
   while (getWaterLevel() <= minWaterLevel) {
@@ -199,10 +240,12 @@ void pengurasan() {
   digitalWrite(RELAY_DRAIN, LOW);
   Serial.println("Pengurasan selesai, mulai pengisian...");
 
+  cekTurbidityValue();
+
   delay(2000);
 
   lcd.setCursor(0, 0);
-  lcd.print("Mulai pengisian..."); 
+  lcd.print("Mulai pengisian...");
 
   digitalWrite(RELAY_FILL, HIGH);
   while (getWaterLevel() >= maxWaterLevel) {
@@ -210,6 +253,8 @@ void pengurasan() {
   }
   digitalWrite(RELAY_FILL, LOW);
   Serial.println("Pengisian selesai.");
+
+  cekTurbidityValue();
 }
 
 float getWaterLevel() {

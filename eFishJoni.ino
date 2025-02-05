@@ -2,11 +2,13 @@
 #include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
 #include <RTClib.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Ultrasonic.h>
 #include <Adafruit_ADS1X15.h>
-#include <WiFiManager.h> 
+#include <WiFiManager.h>  // Library WiFiManager
 
 Adafruit_ADS1115 ads;  // Inisialisasi ADS1115
 
@@ -20,7 +22,9 @@ const char* password = "";
 // Firebase URL
 const String firebaseBaseURL = "https://fishfeeder-jonny-default-rtdb.asia-southeast1.firebasedatabase.app/";
 
-// Konfigurasi RTC dan NTPRELAY_FEED
+// Konfigurasi RTC dan NTP
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "id.pool.ntp.org");  // GMT+7
 RTC_DS3231 rtc;
 
 // Konfigurasi Ultrasonic Pakan
@@ -76,6 +80,7 @@ bool* sudahMemberiPakan = nullptr;  // Status pemberian pakan
 
 void setup() {
   Serial.begin(115200);
+  Wire.begin();
 
   // Inisialisasi WiFi
   if (wm.autoConnect()) {
@@ -142,7 +147,7 @@ void setup() {
   ambilJadwalPakan();
 
   // Set waktu awal jika diperlukan (pastikan Anda hanya mengatur ini sekali)
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Ini akan mengatur waktu ke waktu kompilasi
+  updateRTCFromNTP();
 }
 
 void loop() {
@@ -429,4 +434,19 @@ void kirimTurbidityKeFirebase(int turbidity) {
     Serial.println(httpCode);
   }
   http.end();
+}
+
+void updateRTCFromNTP() {
+  timeClient.begin();
+
+  while (!timeClient.update()) {
+    timeClient.forceUpdate();
+  }
+
+  unsigned long epochTime = timeClient.getEpochTime();
+  epochTime += 25200;  // GMT+7
+
+  DateTime ntpTime(epochTime);
+  rtc.adjust(ntpTime);
+  Serial.println("RTC updated from NTP!");
 }

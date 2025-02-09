@@ -9,6 +9,8 @@
 #include <Ultrasonic.h>
 #include <Adafruit_ADS1X15.h>
 #include <WiFiManager.h>  // Library WiFiManager
+#include <Preferences.h>
+
 
 Adafruit_ADS1115 ads;  // Inisialisasi ADS1115
 
@@ -48,6 +50,8 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 DateTime now;
 //Variabel Wifi Manager
 WiFiManager wm;
+//Variabel prefereneces
+Preferences preferences;
 
 //variabel turbidity arduino uno
 int turbidityValue = 0;
@@ -82,28 +86,40 @@ void setup() {
   Serial.begin(115200);
   Wire.begin();
 
-  // Inisialisasi WiFi
-  if (wm.autoConnect()) {
-    // Jika terhubung ke Wi-Fi
-    digitalWrite(2, LOW);  // Matikan LED jika sudah terhubung ke WiFi
-    Serial.println("Tersambung ke Wi-Fi!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    // Jika gagal menghubungkan, masuk ke portal konfigurasi
-    Serial.println("Gagal menghubungkan ke Wi-Fi, masuk ke mode AP...");
-    for (int i = 0; i < 10; i++) {
-      digitalWrite(2, HIGH);
-      delay(200);
-      digitalWrite(2, LOW);
-      delay(200);
-      digitalWrite(2, HIGH);
-    }
-    wm.startConfigPortal("Jfish", "12345678");  // Portal Wi-Fi
-    Serial.println("Mode AP aktif, membuka portal konfigurasi...");
+  // Inisialisasi LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+
+  //Inisialisasi LED_PIN
+  pinMode(LED_PIN, OUTPUT);
+
+  // Tampilkan pesan awal
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting WiFi...");
+
+  // Menyalakan LED saat tombol reset ditekan
+  for (int i = 0; i < 10; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(200);
+    digitalWrite(LED_PIN, LOW);
+    delay(200);
+    digitalWrite(LED_PIN, HIGH);
+  }
+
+  // Coba koneksi otomatis
+  if (!wm.autoConnect("Jfish", "12345678")) {
+    Serial.println("Gagal terhubung ke WiFi, masuk ke mode AP...");
+  }
+
+  // Pastikan ESP tidak melanjutkan jika belum terhubung
+  while (!WiFi.isConnected()) {
+    delay(100);  // Tunggu hingga koneksi berhasil
   }
 
   Serial.println("WiFi connected");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
 
   // Inisialisasi RTC
   if (!rtc.begin()) {
@@ -119,12 +135,8 @@ void setup() {
       ;
   }
 
-  // Inisialisasi LCD
-  lcd.init();
-  lcd.backlight();
-
   // Inisialisasi LED dan Relay
-  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
   pinMode(RELAY_FEED, OUTPUT);
   digitalWrite(RELAY_FEED, LOW);
   pinMode(RELAY_FILL, OUTPUT);
@@ -146,6 +158,23 @@ void setup() {
   // Ambil jadwal pakan dari Firebase
   ambilJadwalPakan();
 
+  // Coba baca data dari NVS
+  preferences.begin("fishfeeder", false);
+  jumlahJadwal = preferences.getInt("jumlahJadwal", 0);
+  if (jumlahJadwal > 0) {
+    jadwalPakan = new Jadwal[jumlahJadwal];
+    sudahMemberiPakan = new bool[jumlahJadwal]();
+    for (int i = 0; i < jumlahJadwal; i++) {
+      jadwalPakan[i].jam = preferences.getInt(("jam" + String(i)).c_str(), 0);
+      jadwalPakan[i].menit = preferences.getInt(("menit" + String(i)).c_str(), 0);
+    }
+    beratPakanSekali = preferences.getInt("beratPakan", 0);
+    Serial.println("Data jadwal dan pakan dibaca dari NVS");
+  } else {
+    Serial.println("Tidak ada data jadwal dan pakan di NVS");
+  }
+  preferences.end();
+
   // Set waktu awal jika diperlukan (pastikan Anda hanya mengatur ini sekali)
   updateRTCFromNTP();
 }
@@ -153,30 +182,7 @@ void setup() {
 void loop() {
   // Cek status WiFi
   if (digitalRead(RESET_PIN) == LOW || WiFi.status() != WL_CONNECTED) {
-    Serial.println("Masuk Ke Mode Access Point");
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Mode Wi-Fi : Jfish");
-    lcd.setCursor(0, 1);
-    lcd.print("Akses configurasi");
-    lcd.setCursor(0, 2);
-    lcd.print("192.168.4.1");
-
-    // Menyalakan LED saat tombol reset ditekan
-    for (int i = 0; i < 10; i++) {
-      digitalWrite(2, HIGH);
-      delay(200);
-      digitalWrite(2, LOW);
-      delay(200);
-      digitalWrite(2, HIGH);
-    }
-
-    delay(1000);                                // Debounce
-    wm.resetSettings();                         // Reset semua kredensial WiFi tersimpan
-    wm.startConfigPortal("Jfish", "12345678");  // Portal Wi-Fi
-
-    Serial.println("Konfigurasi selesai, restart ESP32.");
-    ESP.restart();  // Restart setelah konfigurasi
+    modeAP();
   }
 
   // Mendapatkan waktu dari RTC
@@ -210,6 +216,22 @@ void loop() {
   lcd.print(turbidityValue);
   lcd.print(" NTU");
 
+  // Tampilkan jadwal terdekat
+  Jadwal jadwalTerdekat = cariJadwalTerdekat();
+  if (jadwalTerdekat.jam != -1 && jadwalTerdekat.menit != -1) {
+    lcd.setCursor(0, 3);
+    lcd.print("Next: ");
+    lcd.print(jadwalTerdekat.jam);
+    lcd.print(":");
+    if (jadwalTerdekat.menit < 10) {
+      lcd.print("0");  // Tambahkan leading zero untuk menit < 10
+    }
+    lcd.print(jadwalTerdekat.menit);
+  } else {
+    lcd.setCursor(0, 3);
+    lcd.print("Tidak ada jadwal");
+  }
+
   if (turbidityValue > turbidityThreshold) { pengurasan(); }
 
   // Cek jika sudah waktunya untuk memperbarui jadwal
@@ -230,6 +252,58 @@ void loop() {
   }
 
   delay(1000);  // Delay untuk menghindari pembacaan terlalu cepat
+}
+
+// Fungsi untuk mencari jadwal terdekat
+Jadwal cariJadwalTerdekat() {
+  Jadwal jadwalTerdekat = { -1, -1 };  // Inisialisasi dengan nilai default
+  DateTime now = rtc.now();            // Waktu saat ini
+
+  int selisihTerdekat = INT_MAX;  // Selisih waktu terdekat
+
+  for (int i = 0; i < jumlahJadwal; i++) {
+    int selisihMenit = (jadwalPakan[i].jam - now.hour()) * 60 + (jadwalPakan[i].menit - now.minute());
+
+    // Jika jadwal sudah lewat hari ini, tambahkan 24 jam (1440 menit)
+    if (selisihMenit < 0) {
+      selisihMenit += 1440;
+    }
+
+    // Cari jadwal dengan selisih terkecil
+    if (selisihMenit < selisihTerdekat) {
+      selisihTerdekat = selisihMenit;
+      jadwalTerdekat = jadwalPakan[i];
+    }
+  }
+
+  return jadwalTerdekat;
+}
+
+void modeAP() {
+  Serial.println("Masuk Ke Mode Access Point");
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Mode Wi-Fi : Jfish");
+  lcd.setCursor(0, 1);
+  lcd.print("Akses configurasi");
+  lcd.setCursor(0, 2);
+  lcd.print("192.168.4.1");
+
+  // Menyalakan LED saat tombol reset ditekan
+  for (int i = 0; i < 10; i++) {
+    digitalWrite(2, HIGH);
+    delay(200);
+    digitalWrite(2, LOW);
+    delay(200);
+    digitalWrite(2, HIGH);
+  }
+
+  delay(1000);                                // Debounce
+  wm.resetSettings();                         // Reset semua kredensial WiFi tersimpan
+  wm.startConfigPortal("Jfish", "12345678");  // Portal Wi-Fi
+
+  Serial.println("Konfigurasi selesai, restart ESP32.");
+  ESP.restart();  // Restart setelah konfigurasi
 }
 
 void pengurasan() {
@@ -324,15 +398,59 @@ void beriPakan() {
     lcd.setCursor(0, 0);
     lcd.print("Makani: " + String(beratPakanSekali) + " Gram");
     digitalWrite(RELAY_FEED, HIGH);
-    delay(beratPakanSekali * waktuPerGram);
+
+    int jumlahPakan = 0;
+    while (jumlahPakan < beratPakanSekali) {
+      jumlahPakan++;
+      lcd.setCursor(0, 1);
+      lcd.print("Proses: " + String(jumlahPakan) + " Gram");
+      delay(1000);
+    }
+    //delay(beratPakanSekali * waktuPerGram);
     digitalWrite(RELAY_FEED, LOW);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Pemberian " + String(jumlahPakan) + " Gram");
+    lcd.setCursor(0, 1);
+    lcd.print("Pakan Berahasil..");
+    kirimHistoryPakanKeFirebase("Berhasil");
   } else {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Stok pakan habis");
+    kirimHistoryPakanKeFirebase("Gagal");
     delay(2000);
     lcd.clear();
   }
+}
+
+// Fungsi untuk mengirim stok pakan ke Firebase
+void kirimHistoryPakanKeFirebase(String status) {
+
+  DateTime now = rtc.now();
+  char timeString[20];
+  sprintf(timeString, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+
+  HTTPClient http;
+  DynamicJsonDocument doc(1024);
+  doc["status"] = status;
+  doc["beratPakan"] = beratPakanSekali;  // Tanpa konversi ke String
+  doc["waktu"] = timeString;
+
+  String payload;
+  serializeJson(doc, payload);
+
+  http.begin(firebaseBaseURL + "pakan/riwayat.json");
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.POST(payload);
+
+  if (httpCode == HTTP_CODE_OK) {
+    Serial.println("History Pakan berhasil dikirim ke Firebase");
+  } else {
+    Serial.print("Gagal mengirim history pakan. HTTP Code: ");
+    Serial.println(httpCode);
+  }
+  http.end();
 }
 
 // Fungsi untuk mengambil jadwal pakan dan berat pakan dari Firebase
@@ -366,12 +484,17 @@ void ambilJadwalPakan() {
       idx++;
     }
     Serial.println("Jadwal berhasil diperbarui");
-    lcd.setCursor(0, 3);
-    lcd.print("Online");
+
+    // Simpan jadwal ke NVS
+    preferences.begin("fishfeeder", false);
+    preferences.putInt("jumlahJadwal", jumlahJadwal);
+    for (int i = 0; i < jumlahJadwal; i++) {
+      preferences.putInt(("jam" + String(i)).c_str(), jadwalPakan[i].jam);
+      preferences.putInt(("menit" + String(i)).c_str(), jadwalPakan[i].menit);
+    }
+    preferences.end();
   } else {
-    lcd.setCursor(0, 3);
-    lcd.print("Offline");
-    Serial.println("Gagal mengambil jadwal dari Firebase");
+    Serial.println("Gagal mengambil jadwal pakan dari Firebase");
   }
 
   // Ambil berat pakan
@@ -387,6 +510,11 @@ void ambilJadwalPakan() {
     beratPakanSekali = doc.as<int>();
     Serial.print("Berat Pakan Sekali: ");
     Serial.println(beratPakanSekali);
+
+    // Simpan berat pakan ke NVS
+    preferences.begin("fishfeeder", false);
+    preferences.putInt("beratPakan", beratPakanSekali);
+    preferences.end();
   } else {
     Serial.println("Gagal mengambil berat pakan dari Firebase");
   }
@@ -396,13 +524,19 @@ void ambilJadwalPakan() {
 
 // Fungsi untuk mengirim stok pakan ke Firebase
 void kirimStokPakanKeFirebase(float stokPakan) {
+
+  DateTime now = rtc.now();
+  char timeString[20];
+  sprintf(timeString, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+
   HTTPClient http;
   DynamicJsonDocument doc(1024);
   doc["stok"] = stokPakan;
+  doc["lastUpdate"] = timeString;
   String payload;
   serializeJson(doc, payload);
 
-  http.begin(firebaseBaseURL + "pakan.json");
+  http.begin(firebaseBaseURL + "sensor.json");
   http.addHeader("Content-Type", "application/json");
   int httpCode = http.PATCH(payload);
 
@@ -423,7 +557,7 @@ void kirimTurbidityKeFirebase(int turbidity) {
   String payload;
   serializeJson(doc, payload);
 
-  http.begin(firebaseBaseURL + "pakan.json");
+  http.begin(firebaseBaseURL + "sensor.json");
   http.addHeader("Content-Type", "application/json");
   int httpCode = http.PATCH(payload);
 

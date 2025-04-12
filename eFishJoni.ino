@@ -12,66 +12,66 @@
 #include <Preferences.h>        // Library untuk penyimpanan data non-volatile
 
 // Inisialisasi objek untuk komponen utama
-Adafruit_ADS1115 ads;           // Objek untuk ADS1115 (ADC 16-bit)
-WiFiUDP ntpUDP;                 // Objek UDP untuk NTP
-NTPClient waktuClient(ntpUDP, "id.pool.ntp.org");  // Objek NTP client dengan server Indonesia
-RTC_DS3231 rtc;                 // Objek untuk modul RTC DS3231
-LiquidCrystal_I2C lcd(0x27, 20, 4); // Objek LCD 20x4 dengan alamat I2C 0x27
-WiFiManager manajerWifi;        // Objek untuk manajemen WiFi
-Preferences preferensi;         // Objek untuk penyimpanan preferensi
+Adafruit_ADS1115 ads;                             // Objek untuk ADS1115 (ADC 16-bit)
+WiFiUDP ntpUDP;                                   // Objek UDP untuk NTP
+NTPClient timeClient(ntpUDP, "time.google.com");  // Objek NTP client server Indonesia
+RTC_DS3231 rtc;                                   // Objek untuk modul RTC DS3231
+LiquidCrystal_I2C lcd(0x27, 20, 4);               // Objek LCD 20x4 dengan alamat I2C 0x27
+WiFiManager manajerWifi;                          // Objek untuk manajemen WiFi
+Preferences preferensi;                           // Objek untuk penyimpanan preferensi
 
 // Konfigurasi Firebase
-const String urlFirebase = "https://fishfeeder-jonny-default-rtdb.asia-southeast1.firebasedatabase.app/";
+const String urlFirebase = "https://ujicoba2025-71e98-default-rtdb.asia-southeast1.firebasedatabase.app/";
+// const String urlFirebase = "https://fishfeeder-jonny-default-rtdb.asia-southeast1.firebasedatabase.app/";
 
 // Definisi pin untuk sensor ultrasonic pakan
-#define PIN_TRIGGER_PAKAN 33    // Pin trigger untuk sensor ultrasonic pakan
-#define PIN_ECHO_PAKAN 32       // Pin echo untuk sensor ultrasonic pakan
+#define PIN_TRIGGER_PAKAN 33  // Pin trigger untuk sensor ultrasonic pakan
+#define PIN_ECHO_PAKAN 32     // Pin echo untuk sensor ultrasonic pakan
 
 // Definisi pin untuk sensor ultrasonic kolam
-#define PIN_TRIGGER_KOLAM 26    // Pin trigger untuk sensor ultrasonic kolam
-#define PIN_ECHO_KOLAM 25       // Pin echo untuk sensor ultrasonic kolam
+#define PIN_TRIGGER_KOLAM 26  // Pin trigger untuk sensor ultrasonic kolam
+#define PIN_ECHO_KOLAM 25     // Pin echo untuk sensor ultrasonic kolam
 
 // Inisialisasi sensor ultrasonic untuk pakan
 Ultrasonic sensorPakan(PIN_TRIGGER_PAKAN, PIN_ECHO_PAKAN);
 
 // Definisi pin untuk relay dan LED
-#define RELAY_PAKAN 14          // Pin relay untuk pemberian pakan
-#define RELAY_BUANG 12          // Pin relay untuk pembuangan air
-#define RELAY_ISI 13            // Pin relay untuk pengisian air
-#define PIN_LED 2               // Pin LED indikator
-#define PIN_RESET 15            // Pin untuk tombol reset
+#define RELAY_PAKAN 14  // Pin relay untuk pemberian pakan
+#define RELAY_BUANG 12  // Pin relay untuk pembuangan air
+#define RELAY_ISI 13    // Pin relay untuk pengisian air
+#define PIN_LED 2       // Pin LED indikator
+#define PIN_RESET 15    // Pin untuk tombol reset
 
 // Variabel untuk menyimpan waktu
-DateTime waktuSekarang;         // Variabel untuk menyimpan waktu saat ini
+DateTime waktuSekarang;  // Variabel untuk menyimpan waktu saat ini
 
 // Variabel untuk sensor kekeruhan
-int nilaiKekeruhan = 0;         // Nilai kekeruhan air
+int nilaiKekeruhan = 0;  // Nilai kekeruhan air
 
 // Konstanta dan variabel untuk level air
-const int LEVEL_AIR_MIN = 30;   // Level air minimum (dalam cm)
-const int LEVEL_AIR_MAX = 20;   // Level air maksimum (dalam cm)
-int batasKekeruhan = 30;        // Batas nilai kekeruhan (dapat diubah melalui Firebase)
+const int LEVEL_AIR_MIN = 30;  // Level air minimum (dalam cm)
+const int LEVEL_AIR_MAX = 20;  // Level air maksimum (dalam cm)
+int batasKekeruhan = 30;       // Batas nilai kekeruhan (dapat diubah melalui Firebase)
 
 // Konstanta dan variabel untuk pakan
-const float TINGGI_WADAH_PAKAN = 35.0;  // Tinggi wadah pakan (dalam cm)
-const int STOK_PAKAN_PENUH = 5000;      // Stok pakan penuh (dalam gram)
+const float TINGGI_WADAH_PAKAN = 25.0;  // Tinggi wadah pakan (dalam cm)
+const int STOK_PAKAN_PENUH = 4000;      // Stok pakan penuh (dalam gram)
 int stokPakan = 0;                      // Stok pakan saat ini (dalam gram)
 int beratPakanPerPemberian = 0;         // Berat pakan setiap kali pemberian (dalam gram)
 int waktuPerGram = 1000;                // Waktu untuk memberikan 1 gram pakan (dalam ms)
 
 // Variabel untuk waktu terakhir update
-unsigned long waktuUpdateTerakhir = 0;        // Waktu terakhir jadwal diperbarui
-unsigned long waktuUpdateFirebaseTerakhir = 0; // Waktu terakhir update data dari Firebase
-const unsigned long INTERVAL_UPDATE = 60000;   // Interval update (60000 ms = 1 menit)
+unsigned long waktuUpdateTerakhir = 0;          // Waktu terakhir jadwal diperbarui
+unsigned long waktuUpdateFirebaseTerakhir = 0;  // Waktu terakhir update data dari Firebase
+const unsigned long INTERVAL_UPDATE = 60000;    // Interval update (60000 ms = 1 menit)
 
 // Status untuk pengurasan
 enum StatusPengurasan {
-  SIAGA,          // Tidak ada pengurasan
-  MEMBUANG,       // Sedang membuang air
-  MENGISI,        // Sedang mengisi air
-  SELESAI         // Pengurasan selesai
+  MEMBUANG,  // Sedang membuang air
+  MENGISI,   // Sedang mengisi air
+  SELESAI    // Pengurasan selesai
 };
-StatusPengurasan statusPengurasan = SIAGA;
+StatusPengurasan statusPengurasan = SELESAI;
 
 // Struktur untuk menyimpan jadwal pemberian pakan
 struct Jadwal {
@@ -86,20 +86,20 @@ bool* statusPemberianPakan = nullptr;  // Untuk menandai apakah pakan sudah dibe
 
 // Fungsi setup: dijalankan sekali saat Arduino mulai
 void setup() {
-  Serial.begin(115200);         // Inisialisasi komunikasi serial dengan baud rate 115200
-  Wire.begin();                 // Inisialisasi komunikasi I2C
+  Serial.begin(115200);  // Inisialisasi komunikasi serial dengan baud rate 115200
+  Wire.begin();          // Inisialisasi komunikasi I2C
 
   // Inisialisasi LCD
-  lcd.init();                   // Inisialisasi LCD
-  lcd.backlight();              // Nyalakan backlight LCD
-  lcd.clear();                  // Bersihkan tampilan LCD
+  lcd.init();       // Inisialisasi LCD
+  lcd.backlight();  // Nyalakan backlight LCD
+  lcd.clear();      // Bersihkan tampilan LCD
 
   // Inisialisasi pin LED
   pinMode(PIN_LED, OUTPUT);
 
   // Tampilkan pesan koneksi WiFi
   lcd.setCursor(0, 0);
-  lcd.print("Menghubungkan WiFi..."); 
+  lcd.print("Menghubungkan WiFi...");
 
   // Berkedip LED saat tombol reset ditekan
   for (int i = 0; i < 10; i++) {
@@ -111,7 +111,7 @@ void setup() {
   }
 
   // Coba koneksi WiFi otomatis
-  if (!manajerWifi.autoConnect("Jfish", "12345678")) {
+  if (!manajerWifi.autoConnect("ElinFish", "12345678")) {
     Serial.println("Gagal terhubung ke WiFi, masuk ke mode AP...");
   }
 
@@ -127,13 +127,15 @@ void setup() {
   // Inisialisasi RTC
   if (!rtc.begin()) {
     Serial.println("RTC tidak terdeteksi");
-    while (1); // Berhenti jika RTC tidak terdeteksi
+    while (1)
+      ;  // Berhenti jika RTC tidak terdeteksi
   }
 
   // Cek koneksi ADS1115
   if (!ads.begin()) {
     Serial.println("Gagal menghubungkan ke ADS1115. Periksa koneksi!");
-    while (1); // Berhenti jika ADS1115 tidak terdeteksi
+    while (1)
+      ;  // Berhenti jika ADS1115 tidak terdeteksi
   }
 
   // Inisialisasi pin relay dan LED
@@ -158,24 +160,24 @@ void setup() {
 
   // Baca data dari penyimpanan non-volatile
   preferensi.begin("ikanpakan", false);
-  
+
   // Baca batas kekeruhan dari penyimpanan
-  batasKekeruhan = preferensi.getInt("batasKekeruhan", 30); // Default 30 jika tidak ada
+  batasKekeruhan = preferensi.getInt("batasKekeruhan", 30);  // Default 30 jika tidak ada
   Serial.print("Batas Kekeruhan dari penyimpanan: ");
   Serial.println(batasKekeruhan);
-  
+
   // Baca jumlah jadwal dari penyimpanan
   jumlahJadwal = preferensi.getInt("jumlahJadwal", 0);
   if (jumlahJadwal > 0) {
     jadwalPemberian = new Jadwal[jumlahJadwal];
     statusPemberianPakan = new bool[jumlahJadwal]();
-    
+
     // Baca setiap jadwal dari penyimpanan
     for (int i = 0; i < jumlahJadwal; i++) {
       jadwalPemberian[i].jam = preferensi.getInt(("jam" + String(i)).c_str(), 0);
       jadwalPemberian[i].menit = preferensi.getInt(("menit" + String(i)).c_str(), 0);
     }
-    
+
     // Baca berat pakan per pemberian
     beratPakanPerPemberian = preferensi.getInt("beratPakan", 0);
     Serial.println("Data jadwal dan pakan berhasil dibaca dari penyimpanan");
@@ -224,12 +226,12 @@ void loop() {
   lcd.print(":");
   if (waktuSekarang.second() < 10) lcd.print("0");
   lcd.print(waktuSekarang.second());
-  
+
   lcd.setCursor(0, 1);
   lcd.print("Stok: ");
   lcd.print(stokPakan);
   lcd.print(" gram");
-  
+
   lcd.setCursor(0, 2);
   lcd.print("Kekeruhan: ");
   lcd.print(nilaiKekeruhan);
@@ -252,7 +254,7 @@ void loop() {
   }
 
   // Cek kekeruhan air dan lakukan pengurasan jika perlu
-  if (nilaiKekeruhan > batasKekeruhan && statusPengurasan == SIAGA) {
+  if (nilaiKekeruhan > batasKekeruhan && statusPengurasan == SELESAI) {
     laksanakanPengurasan();
   }
 
@@ -282,34 +284,39 @@ void ambilBatasKekeruhan() {
   String respons;
   DynamicJsonDocument dokumen(1024);
 
-  http.begin(urlFirebase + "sensor/turbidityThreshold.json");
-  int kodeHttp = http.GET();
-  
-  if (kodeHttp == HTTP_CODE_OK) {
+  http.begin(urlFirebase + "pengurasan/batasKekeruhan.json");
+  int httpCode = http.GET();
+
+  if (httpCode == HTTP_CODE_OK) {
     respons = http.getString();
     DeserializationError kesalahan = deserializeJson(dokumen, respons);
-    
+
     if (kesalahan) {
       Serial.println("Gagal mengurai JSON untuk batas kekeruhan");
       return;
     }
-    
+
     int batasBaru = dokumen.as<int>();
-    if (batasBaru > 0) { // Pastikan nilai valid
+    if (batasBaru > 0) {  // Pastikan nilai valid
       batasKekeruhan = batasBaru;
       Serial.print("Batas Kekeruhan: ");
       Serial.println(batasKekeruhan);
-      
+
       // Simpan ke penyimpanan
       preferensi.begin("ikanpakan", false);
-      preferensi.putInt("batasKekeruhan", batasKekeruhan);
+      int nilaiTersimpan = preferensi.getInt("batasKekeruhan", -1);
+      if (nilaiTersimpan != batasKekeruhan) {
+        preferensi.putInt("batasKekeruhan", batasKekeruhan);
+        Serial.println("Batas kekeruhan disimpan ke penyimpanan");
+      } else {
+        Serial.println("Nilai batasKekeruhan sama, tidak disimpan ulang.");
+      }
       preferensi.end();
-      Serial.println("Batas kekeruhan disimpan ke penyimpanan");
     }
   } else {
     Serial.println("Gagal mengambil batas kekeruhan dari Firebase");
   }
-  
+
   http.end();
 }
 
@@ -321,8 +328,7 @@ Jadwal cariJadwalTerdekat() {
   int selisihTerdekat = INT_MAX;  // Selisih waktu terdekat
 
   for (int i = 0; i < jumlahJadwal; i++) {
-    int selisihMenit = (jadwalPemberian[i].jam - waktuSekarang.hour()) * 60 + 
-                        (jadwalPemberian[i].menit - waktuSekarang.minute());
+    int selisihMenit = (jadwalPemberian[i].jam - waktuSekarang.hour()) * 60 + (jadwalPemberian[i].menit - waktuSekarang.minute());
 
     // Jika jadwal sudah lewat hari ini, tambahkan 24 jam (1440 menit)
     if (selisihMenit < 0) {
@@ -344,7 +350,7 @@ void modePengaturanWifi() {
   Serial.println("Masuk ke Mode Pengaturan WiFi");
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Mode WiFi: Jfish");
+  lcd.print("Mode WiFi: ElinFish");
   lcd.setCursor(0, 1);
   lcd.print("Akses konfigurasi:");
   lcd.setCursor(0, 2);
@@ -359,9 +365,9 @@ void modePengaturanWifi() {
     digitalWrite(PIN_LED, HIGH);
   }
 
-  delay(1000);  // Debounce untuk tombol
-  manajerWifi.resetSettings();  // Reset semua pengaturan WiFi tersimpan
-  manajerWifi.startConfigPortal("Jfish", "12345678");  // Mulai portal konfigurasi WiFi
+  delay(1000);                                         // Debounce untuk tombol
+  manajerWifi.resetSettings();                         // Reset semua pengaturan WiFi tersimpan
+  manajerWifi.startConfigPortal("ElinFish", "12345678");  // Mulai portal konfigurasi WiFi
 
   Serial.println("Konfigurasi selesai, memulai ulang ESP32.");
   ESP.restart();  // Mulai ulang ESP32 setelah konfigurasi
@@ -373,139 +379,87 @@ void laksanakanPengurasan() {
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Mulai pengurasan...");
-  
+
   // Perbarui status pengurasan ke Firebase
   statusPengurasan = MEMBUANG;
-  kirimStatusPengurasan("Membuang");
-  
+  kirimStatusPengurasan("Pengurasan");
+
   // Mulai proses pembuangan air
   digitalWrite(RELAY_BUANG, HIGH);
   float levelSaatIni = dapatkanLevelAir();
-  
-  // Kirim nilai awal
-  kirimProsesPengurasan(levelSaatIni, LEVEL_AIR_MIN);
-  
+
   // Tunggu sampai air mencapai level minimum
   while (levelSaatIni <= LEVEL_AIR_MIN) {
     delay(1000);
     levelSaatIni = dapatkanLevelAir();
-    kirimProsesPengurasan(levelSaatIni, LEVEL_AIR_MIN);
   }
-  
+
   digitalWrite(RELAY_BUANG, LOW);
   Serial.println("Pengurasan selesai, mulai pengisian...");
 
   // Cek kekeruhan setelah pengurasan
-  cekNilaiKekeruhan();
+  nilaiKekeruhan = cekNilaiKekeruhan(); 
 
   delay(2000);
 
   lcd.setCursor(0, 0);
   lcd.print("Mulai pengisian...");
-  
+
   // Perbarui status pengisian ke Firebase
   statusPengurasan = MENGISI;
-  kirimStatusPengurasan("Mengisi");
-  
+  kirimStatusPengurasan("Pengisian");
+
   // Mulai proses pengisian air
   digitalWrite(RELAY_ISI, HIGH);
   levelSaatIni = dapatkanLevelAir();
-  
-  // Kirim nilai awal pengisian
-  kirimProsesPengurasan(levelSaatIni, LEVEL_AIR_MAX);
-  
+
   // Tunggu sampai air mencapai level maksimum
   while (levelSaatIni >= LEVEL_AIR_MAX) {
     delay(1000);
     levelSaatIni = dapatkanLevelAir();
-    kirimProsesPengurasan(levelSaatIni, LEVEL_AIR_MAX);
   }
-  
+
   digitalWrite(RELAY_ISI, LOW);
   Serial.println("Pengisian selesai.");
-  
+
+
+  // Cek kekeruhan setelah pengisian
+  nilaiKekeruhan = cekNilaiKekeruhan();
+
+  // Reset status setelah beberapa detik
+  delay(2000);
   // Perbarui status selesai ke Firebase
   statusPengurasan = SELESAI;
   kirimStatusPengurasan("Selesai");
-  
-  // Cek kekeruhan setelah pengisian
-  cekNilaiKekeruhan();
-  
-  // Reset status setelah beberapa detik
-  delay(2000);
-  statusPengurasan = SIAGA;
-  kirimStatusPengurasan("Siaga");
 }
 
 // Fungsi untuk mengirim status pengurasan ke Firebase
 void kirimStatusPengurasan(String status) {
   DateTime waktuSekarang = rtc.now();
   char stringWaktu[20];
-  sprintf(stringWaktu, "%04d-%02d-%02d %02d:%02d:%02d", 
-          waktuSekarang.year(), waktuSekarang.month(), waktuSekarang.day(), 
+  sprintf(stringWaktu, "%04d-%02d-%02d %02d:%02d:%02d",
+          waktuSekarang.year(), waktuSekarang.month(), waktuSekarang.day(),
           waktuSekarang.hour(), waktuSekarang.minute(), waktuSekarang.second());
 
   HTTPClient http;
   DynamicJsonDocument dokumen(1024);
   dokumen["status"] = status;
+  dokumen["nilaiKekeruhan"] = nilaiKekeruhan;
   dokumen["waktu"] = stringWaktu;
 
   String muatan;
   serializeJson(dokumen, muatan);
 
-  // Kirim status pengurasan
-  http.begin(urlFirebase + "pengurasan/status.json");
-  http.addHeader("Content-Type", "application/json");
-  int kodeHttp = http.PUT(muatan);
-
-  if (kodeHttp == HTTP_CODE_OK) {
-    Serial.println("Status pengurasan berhasil dikirim ke Firebase");
-  } else {
-    Serial.print("Gagal mengirim status pengurasan. Kode HTTP: ");
-    Serial.println(kodeHttp);
-  }
-  http.end();
-  
   // Tambahkan juga ke riwayat pengurasan
   http.begin(urlFirebase + "pengurasan/riwayat.json");
   http.addHeader("Content-Type", "application/json");
-  kodeHttp = http.POST(muatan);
-  
-  if (kodeHttp == HTTP_CODE_OK) {
+  int httpCode = http.POST(muatan);
+
+  if (httpCode == HTTP_CODE_OK) {
     Serial.println("Riwayat pengurasan berhasil ditambahkan ke Firebase");
   } else {
     Serial.print("Gagal menambahkan riwayat pengurasan. Kode HTTP: ");
-    Serial.println(kodeHttp);
-  }
-  http.end();
-}
-
-// Fungsi untuk mengirim proses pengurasan/pengisian ke Firebase
-void kirimProsesPengurasan(float levelSaatIni, float levelTarget) {
-  HTTPClient http;
-  DynamicJsonDocument dokumen(1024);
-  
-  dokumen["levelSaatIni"] = levelSaatIni;
-  dokumen["levelTarget"] = levelTarget;
-  
-  // Hitung kemajuan proses dalam persen
-  float kemajuan = statusPengurasan == MEMBUANG ? 
-                    (levelSaatIni / LEVEL_AIR_MIN) * 100 : 
-                    (levelSaatIni / LEVEL_AIR_MAX) * 100;
-  dokumen["kemajuan"] = kemajuan;
-
-  String muatan;
-  serializeJson(dokumen, muatan);
-
-  http.begin(urlFirebase + "pengurasan/proses.json");
-  http.addHeader("Content-Type", "application/json");
-  int kodeHttp = http.PUT(muatan);
-
-  if (kodeHttp == HTTP_CODE_OK) {
-    Serial.println("Proses pengurasan/pengisian berhasil diperbarui ke Firebase");
-  } else {
-    Serial.print("Gagal mengirim proses pengurasan/pengisian. Kode HTTP: ");
-    Serial.println(kodeHttp);
+    Serial.println(httpCode);
   }
   http.end();
 }
@@ -515,7 +469,7 @@ float dapatkanLevelAir() {
   // Reset trigger pin
   digitalWrite(PIN_TRIGGER_KOLAM, LOW);
   delayMicroseconds(2);
-  
+
   // Kirim pulsa 10 mikrodetik
   digitalWrite(PIN_TRIGGER_KOLAM, HIGH);
   delayMicroseconds(10);
@@ -523,7 +477,7 @@ float dapatkanLevelAir() {
 
   // Baca durasi pulsa gema
   long durasi = pulseIn(PIN_ECHO_KOLAM, HIGH);
-  
+
   // Hitung jarak berdasarkan durasi
   float jarak = durasi * 0.034 / 2;  // cm
 
@@ -536,7 +490,7 @@ float dapatkanLevelAir() {
   Serial.print("Tinggi air: ");
   Serial.print(jarak);
   Serial.println(" cm");
-  
+
   return jarak;
 }
 
@@ -544,9 +498,10 @@ float dapatkanLevelAir() {
 int cekNilaiKekeruhan() {
   // Baca nilai ADC dari channel A0 pada ADS1115
   int16_t nilaiMentah = ads.readADC_SingleEnded(0);
-  
+
   // Konversi nilai ADC menjadi nilai kekeruhan (0-100)
-  float kekeruhan = map(nilaiMentah, 0, 23800, 100, 0);
+  // float kekeruhan = map(nilaiMentah, 0, 23800, 100, 0);
+  float kekeruhan = map(nilaiMentah, 0, 17200, 100, 0);
 
   Serial.print("Nilai Kekeruhan: ");
   Serial.println(kekeruhan);
@@ -563,14 +518,14 @@ int cekNilaiKekeruhan() {
 float hitungStokPakan() {
   // Baca jarak dari sensor ultrasonic
   long jarak = sensorPakan.read();  // Jarak dalam cm
-  
+
   Serial.print("Jarak: ");
   Serial.print(jarak);
   Serial.println(" cm");
-  
+
   // Hitung tinggi pakan berdasarkan jarak
   float tinggiPakan = TINGGI_WADAH_PAKAN - jarak;
-  
+
   // Hitung stok pakan berdasarkan persentase tinggi
   int stok = (tinggiPakan / TINGGI_WADAH_PAKAN) * STOK_PAKAN_PENUH;
 
@@ -594,7 +549,7 @@ void berikanPakan() {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Pemberian: " + String(beratPakanPerPemberian) + " Gram");
-    
+
     // Aktifkan relay pemberi pakan
     digitalWrite(RELAY_PAKAN, HIGH);
 
@@ -606,17 +561,17 @@ void berikanPakan() {
       lcd.print("Proses: " + String(jumlahPakan) + " Gram");
       delay(1000);
     }
-    
+
     // Matikan relay pemberi pakan
     digitalWrite(RELAY_PAKAN, LOW);
-    
+
     // Tampilkan pesan sukses
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Pemberian " + String(jumlahPakan) + " Gram");
     lcd.setCursor(0, 1);
     lcd.print("Pakan Berhasil...");
-    
+
     // Kirim status berhasil ke Firebase
     kirimRiwayatPakanKeFirebase("Berhasil");
   } else {
@@ -624,10 +579,10 @@ void berikanPakan() {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Stok pakan habis");
-    
+
     // Kirim status gagal ke Firebase
     kirimRiwayatPakanKeFirebase("Gagal");
-    
+
     delay(2000);
     lcd.clear();
   }
@@ -637,8 +592,8 @@ void berikanPakan() {
 void kirimRiwayatPakanKeFirebase(String status) {
   DateTime waktuSekarang = rtc.now();
   char stringWaktu[20];
-  sprintf(stringWaktu, "%04d-%02d-%02d %02d:%02d:%02d", 
-          waktuSekarang.year(), waktuSekarang.month(), waktuSekarang.day(), 
+  sprintf(stringWaktu, "%04d-%02d-%02d %02d:%02d:%02d",
+          waktuSekarang.year(), waktuSekarang.month(), waktuSekarang.day(),
           waktuSekarang.hour(), waktuSekarang.minute(), waktuSekarang.second());
 
   HTTPClient http;
@@ -652,13 +607,13 @@ void kirimRiwayatPakanKeFirebase(String status) {
 
   http.begin(urlFirebase + "pakan/riwayat.json");
   http.addHeader("Content-Type", "application/json");
-  int kodeHttp = http.POST(muatan);
+  int httpCode = http.POST(muatan);
 
-  if (kodeHttp == HTTP_CODE_OK) {
+  if (httpCode == HTTP_CODE_OK) {
     Serial.println("Riwayat pemberian pakan berhasil dikirim ke Firebase");
   } else {
     Serial.print("Gagal mengirim riwayat pemberian pakan. Kode HTTP: ");
-    Serial.println(kodeHttp);
+    Serial.println(httpCode);
   }
   http.end();
 }
@@ -671,19 +626,19 @@ void ambilJadwalPakan() {
 
   // Ambil data jadwal
   http.begin(urlFirebase + "jadwal.json");
-  int kodeHttp = http.GET();
-  
-  if (kodeHttp == HTTP_CODE_OK) {
+  int httpCode = http.GET();
+
+  if (httpCode == HTTP_CODE_OK) {
     respons = http.getString();
     DeserializationError kesalahan = deserializeJson(dokumen, respons);
-    
+
     if (kesalahan) {
       Serial.println("Gagal mengurai JSON untuk jadwal");
       return;
-}
-    
+    }
+
     jumlahJadwal = dokumen.size();
-    
+
     // Dealokasi array lama jika ada
     if (jadwalPemberian) delete[] jadwalPemberian;
     if (statusPemberianPakan) delete[] statusPemberianPakan;
@@ -704,36 +659,63 @@ void ambilJadwalPakan() {
 
     // Simpan jadwal ke penyimpanan non-volatile
     preferensi.begin("ikanpakan", false);
-    preferensi.putInt("jumlahJadwal", jumlahJadwal);
-    for (int i = 0; i < jumlahJadwal; i++) {
-      preferensi.putInt(("jam" + String(i)).c_str(), jadwalPemberian[i].jam);
-      preferensi.putInt(("menit" + String(i)).c_str(), jadwalPemberian[i].menit);
+
+    // Cek dan simpan jumlah jadwal jika berubah
+    int jumlahTersimpan = preferensi.getInt("jumlahJadwal", -1);
+    if (jumlahTersimpan != jumlahJadwal) {
+      preferensi.putInt("jumlahJadwal", jumlahJadwal);
     }
+
+    // Cek dan simpan setiap jadwal hanya jika ada perubahan
+    for (int i = 0; i < jumlahJadwal; i++) {
+      String keyJam = "jam" + String(i);
+      String keyMenit = "menit" + String(i);
+
+      int jamTersimpan = preferensi.getInt(keyJam.c_str(), -1);
+      int menitTersimpan = preferensi.getInt(keyMenit.c_str(), -1);
+
+      if (jamTersimpan != jadwalPemberian[i].jam) {
+        preferensi.putInt(keyJam.c_str(), jadwalPemberian[i].jam);
+      }
+
+      if (menitTersimpan != jadwalPemberian[i].menit) {
+        preferensi.putInt(keyMenit.c_str(), jadwalPemberian[i].menit);
+      }
+    }
+
     preferensi.end();
   } else {
     Serial.println("Gagal mengambil jadwal pakan dari Firebase");
   }
 
   // Ambil berat pakan per pemberian
-  http.begin(urlFirebase + "pakan/berat.json");
-  kodeHttp = http.GET();
-  
-  if (kodeHttp == HTTP_CODE_OK) {
+  http.begin(urlFirebase + "pakan/beratPakan.json");
+  httpCode = http.GET();
+
+  if (httpCode == HTTP_CODE_OK) {
     respons = http.getString();
     DeserializationError kesalahan = deserializeJson(dokumen, respons);
-    
+
     if (kesalahan) {
       Serial.println("Gagal mengurai JSON untuk berat pakan");
       return;
     }
-    
+
     beratPakanPerPemberian = dokumen.as<int>();
     Serial.print("Berat Pakan Per Pemberian: ");
     Serial.println(beratPakanPerPemberian);
 
     // Simpan berat pakan ke penyimpanan non-volatile
     preferensi.begin("ikanpakan", false);
-    preferensi.putInt("beratPakan", beratPakanPerPemberian);
+
+    // Ambil nilai yang tersimpan sebelumnya
+    int beratTersimpan = preferensi.getInt("beratPakan", -1);
+
+    // Simpan hanya jika nilai berubah
+    if (beratTersimpan != beratPakanPerPemberian) {
+      preferensi.putInt("beratPakan", beratPakanPerPemberian);
+    }
+
     preferensi.end();
   } else {
     Serial.println("Gagal mengambil berat pakan dari Firebase");
@@ -746,27 +728,27 @@ void ambilJadwalPakan() {
 void kirimStokPakanKeFirebase(float stokPakan) {
   DateTime waktuSekarang = rtc.now();
   char stringWaktu[20];
-  sprintf(stringWaktu, "%04d-%02d-%02d %02d:%02d:%02d", 
-          waktuSekarang.year(), waktuSekarang.month(), waktuSekarang.day(), 
+  sprintf(stringWaktu, "%04d-%02d-%02d %02d:%02d:%02d",
+          waktuSekarang.year(), waktuSekarang.month(), waktuSekarang.day(),
           waktuSekarang.hour(), waktuSekarang.minute(), waktuSekarang.second());
 
   HTTPClient http;
   DynamicJsonDocument dokumen(1024);
-  dokumen["stok"] = stokPakan;
+  dokumen["stokPakan"] = stokPakan;
   dokumen["terakhirDiperbarui"] = stringWaktu;
-  
+
   String muatan;
   serializeJson(dokumen, muatan);
 
   http.begin(urlFirebase + "sensor.json");
   http.addHeader("Content-Type", "application/json");
-  int kodeHttp = http.PATCH(muatan);
+  int httpCode = http.PATCH(muatan);
 
-  if (kodeHttp == HTTP_CODE_OK) {
+  if (httpCode == HTTP_CODE_OK) {
     Serial.println("Stok pakan berhasil dikirim ke Firebase");
   } else {
     Serial.print("Gagal mengirim stok pakan. Kode HTTP: ");
-    Serial.println(kodeHttp);
+    Serial.println(httpCode);
   }
   http.end();
 }
@@ -775,32 +757,32 @@ void kirimStokPakanKeFirebase(float stokPakan) {
 void kirimKekeruhanKeFirebase(int kekeruhan) {
   HTTPClient http;
   DynamicJsonDocument dokumen(1024);
-  dokumen["turbidity"] = kekeruhan;
-  
+  dokumen["nilaiKekeruhan"] = kekeruhan;
+
   String muatan;
   serializeJson(dokumen, muatan);
 
   http.begin(urlFirebase + "sensor.json");
   http.addHeader("Content-Type", "application/json");
-  int kodeHttp = http.PATCH(muatan);
+  int httpCode = http.PATCH(muatan);
 
-  if (kodeHttp == HTTP_CODE_OK) {
+  if (httpCode == HTTP_CODE_OK) {
     Serial.println("Nilai kekeruhan berhasil dikirim ke Firebase");
   } else {
     Serial.print("Gagal mengirim nilai kekeruhan. Kode HTTP: ");
-    Serial.println(kodeHttp);
+    Serial.println(httpCode);
   }
   http.end();
 }
 
 // Fungsi untuk memperbarui waktu RTC dari server NTP
 void updateRTCdariNTP() {
-  waktuClient.begin();
+  timeClient.begin();
 
   // Coba beberapa kali untuk mendapatkan waktu yang akurat
   int percobaan = 0;
-  while (!waktuClient.update() && percobaan < 5) {
-    waktuClient.forceUpdate();
+  while (!timeClient.update() && percobaan < 5) {
+    timeClient.forceUpdate();
     percobaan++;
     delay(500);
   }
@@ -811,12 +793,12 @@ void updateRTCdariNTP() {
   }
 
   // Dapatkan waktu epoch dari server NTP
-  unsigned long waktuEpoch = waktuClient.getEpochTime();
+  unsigned long waktuEpoch = timeClient.getEpochTime();
   waktuEpoch += 25200;  // Tambahkan 7 jam (25200 detik) untuk GMT+7
 
   // Buat objek DateTime dari waktu epoch
   DateTime waktuNTP(waktuEpoch);
-  
+
   // Perbarui RTC dengan waktu dari NTP
   rtc.adjust(waktuNTP);
   Serial.println("RTC berhasil diperbarui dari NTP!");

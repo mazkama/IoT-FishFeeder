@@ -49,7 +49,7 @@ DateTime waktuSekarang;  // Variabel untuk menyimpan waktu saat ini
 int nilaiKekeruhan = 0;  // Nilai kekeruhan air
 
 // Konstanta dan variabel untuk level air
-const int LEVEL_AIR_MIN = 30;  // Level air minimum (dalam cm)
+const int LEVEL_AIR_MIN = 40;  // Level air minimum (dalam cm)
 const int LEVEL_AIR_MAX = 20;  // Level air maksimum (dalam cm)
 int batasKekeruhan = 30;       // Batas nilai kekeruhan (dapat diubah melalui Firebase)
 

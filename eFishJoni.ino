@@ -494,14 +494,21 @@ float dapatkanLevelAir() {
   return jarak;
 }
 
+// Fungsi mapping float (seperti map() versi float)
+float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 // Fungsi untuk mengecek nilai kekeruhan
 int cekNilaiKekeruhan() {
   // Baca nilai ADC dari channel A0 pada ADS1115
   int16_t nilaiMentah = ads.readADC_SingleEnded(0);
 
-  // Konversi nilai ADC menjadi nilai kekeruhan (0-100)
-  // float kekeruhan = map(nilaiMentah, 0, 23800, 100, 0);
-  float kekeruhan = map(nilaiMentah, 0, 17200, 100, 0);
+  // Konversi nilai ADC menjadi kekeruhan (0–100 NTU misalnya)
+  float kekeruhan = mapFloat(nilaiMentah, 17900, 19000, 100, 0)  // Nilai ADC besar = air jernih
+  kekeruhan = constrain(kekeruhan, 0, 100); // Pastikan dalam rentang 0-100
+
+  int kekeruhanNTU = round(kekeruhan); // Bulatkan ke NTU
 
   Serial.print("Nilai Kekeruhan: ");
   Serial.println(kekeruhan);
@@ -511,7 +518,7 @@ int cekNilaiKekeruhan() {
     kirimKekeruhanKeFirebase(kekeruhan);
   }
 
-  return kekeruhan;
+  return kekeruhanNTU;
 }
 
 // Fungsi untuk menghitung stok pakan yang tersisa

@@ -45,6 +45,8 @@ Ultrasonic sensorPakan(PIN_TRIGGER_PAKAN, PIN_ECHO_PAKAN);
 // Variabel untuk menyimpan waktu
 DateTime waktuSekarang;  // Variabel untuk menyimpan waktu saat ini
 
+bool sudahRestartHariIni = false; // Untuk menandai restart harian
+
 // Variabel untuk sensor kekeruhan
 int nilaiKekeruhan = 0;  // Nilai kekeruhan air
 
@@ -52,6 +54,10 @@ int nilaiKekeruhan = 0;  // Nilai kekeruhan air
 const int LEVEL_AIR_MIN = 40;  // Level air minimum (dalam cm)
 const int LEVEL_AIR_MAX = 20;  // Level air maksimum (dalam cm)
 int batasKekeruhan = 30;       // Batas nilai kekeruhan (dapat diubah melalui Firebase)
+
+// Konstanta buffer Median Filter (untuk filter data)
+const int bufferSize = 9;
+int adcBuffer[bufferSize];
 
 // Konstanta dan variabel untuk pakan
 const float TINGGI_WADAH_PAKAN = 25.0;  // Tinggi wadah pakan (dalam cm)
@@ -64,6 +70,9 @@ int waktuPerGram = 1000;                // Waktu untuk memberikan 1 gram pakan (
 unsigned long waktuUpdateTerakhir = 0;          // Waktu terakhir jadwal diperbarui
 unsigned long waktuUpdateFirebaseTerakhir = 0;  // Waktu terakhir update data dari Firebase
 const unsigned long INTERVAL_UPDATE = 60000;    // Interval update (60000 ms = 1 menit)
+
+unsigned long waktuTerakhirBacaSensor = 0;
+const unsigned long intervalBacaSensor = 2000; // misal 2 detik
 
 // Status untuk pengurasan
 enum StatusPengurasan {
@@ -186,6 +195,11 @@ void setup() {
   }
   preferensi.end();
 
+  // Inisialisasi buffer dengan nilai awal
+  for (int i = 0; i < bufferSize; i++) {
+    adcBuffer[i] = adcValue;
+  }
+
   // Ambil jadwal dan batas kekeruhan dari Firebase
   ambilJadwalPakan();
   ambilBatasKekeruhan();
@@ -203,6 +217,16 @@ void loop() {
 
   // Dapatkan waktu dari RTC
   waktuSekarang = rtc.now();
+
+  if (waktuSekarang.hour() == 0 && waktuSekarang.minute() == 0 && waktuSekarang.second() == 0 && !sudahRestartHariIni) {
+    sudahRestartHariIni = true;  // tandai sudah restart hari ini
+    ESP.restart();
+  }
+
+  // Reset flag saat sudah bukan jam 00:00 lagi
+  if (waktuSekarang.hour() != 0 || waktuSekarang.minute() != 0) {
+    sudahRestartHariIni = false;
+  }
 
   // Hitung stok pakan dan cek kekeruhan
   stokPakan = hitungStokPakan();
@@ -276,6 +300,19 @@ void loop() {
   }
 
   delay(1000);  // Delay 1 detik untuk mengurangi beban CPU dan menghindari pembacaan terlalu cepat
+}
+
+// Fungsi median filter
+int medianFilter(int newValue) {
+  for (int i = bufferSize - 1; i > 0; i--) {
+    adcBuffer[i] = adcBuffer[i - 1];
+  }
+  adcBuffer[0] = newValue;
+
+  int temp[bufferSize];
+  memcpy(temp, adcBuffer, sizeof(temp));
+  std::sort(temp, temp + bufferSize);
+  return temp[bufferSize / 2];  // Median
 }
 
 // Fungsi untuk mengambil batas kekeruhan dari Firebase
@@ -505,7 +542,7 @@ int cekNilaiKekeruhan() {
   int16_t nilaiMentah = ads.readADC_SingleEnded(0);
 
   // Konversi nilai ADC menjadi kekeruhan (0–100 NTU misalnya)
-  float kekeruhan = mapFloat(nilaiMentah, 17900, 19000, 100, 0)  // Nilai ADC besar = air jernih
+  float kekeruhan = mapFloat(nilaiMentah, 16700, 19000, 100, 0);
   kekeruhan = constrain(kekeruhan, 0, 100); // Pastikan dalam rentang 0-100
 
   int kekeruhanNTU = round(kekeruhan); // Bulatkan ke NTU
@@ -518,32 +555,31 @@ int cekNilaiKekeruhan() {
     kirimKekeruhanKeFirebase(kekeruhan);
   }
 
-  return kekeruhanNTU;
+  return medianFilter(kekeruhanNTU);
 }
 
 // Fungsi untuk menghitung stok pakan yang tersisa
 float hitungStokPakan() {
-  // Baca jarak dari sensor ultrasonic
-  long jarak = sensorPakan.read();  // Jarak dalam cm
+  static int stok = 0;
 
-  Serial.print("Jarak: ");
-  Serial.print(jarak);
-  Serial.println(" cm");
+  if (millis() - waktuTerakhirBacaSensor >= intervalBacaSensor) {
+    waktuTerakhirBacaSensor = millis();
 
-  // Hitung tinggi pakan berdasarkan jarak
-  float tinggiPakan = TINGGI_WADAH_PAKAN - jarak;
+    long jarak = sensorPakan.read();
+    Serial.print("Jarak: ");
+    Serial.print(jarak);
+    Serial.println(" cm");
 
-  // Hitung stok pakan berdasarkan persentase tinggi
-  int stok = (tinggiPakan / TINGGI_WADAH_PAKAN) * STOK_PAKAN_PENUH;
+    float tinggiPakan = TINGGI_WADAH_PAKAN - jarak;
+    stok = (tinggiPakan / TINGGI_WADAH_PAKAN) * STOK_PAKAN_PENUH;
 
-  // Pastikan stok tidak negatif
-  if (stok < 0) {
-    stok = 0;
+    if (stok < 0) stok = 0;
   }
 
-  // Kirim data stok pakan ke Firebase setiap 5 detik
+  // Kirim data ke Firebase setiap 5 detik (seperti kode kamu sebelumnya)
   if (millis() - waktuUpdateFirebaseTerakhir > 5000) {
     kirimStokPakanKeFirebase(stok);
+    waktuUpdateFirebaseTerakhir = millis();
   }
 
   return stok;

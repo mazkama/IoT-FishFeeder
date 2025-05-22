@@ -71,9 +71,6 @@ unsigned long waktuUpdateTerakhir = 0;          // Waktu terakhir jadwal diperba
 unsigned long waktuUpdateFirebaseTerakhir = 0;  // Waktu terakhir update data dari Firebase
 const unsigned long INTERVAL_UPDATE = 60000;    // Interval update (60000 ms = 1 menit)
 
-unsigned long waktuTerakhirBacaSensor = 0;
-const unsigned long intervalBacaSensor = 2000; // misal 2 detik
-
 // Status untuk pengurasan
 enum StatusPengurasan {
   MEMBUANG,  // Sedang membuang air
@@ -567,26 +564,27 @@ int cekNilaiKekeruhan() {
 
 // Fungsi untuk menghitung stok pakan yang tersisa
 float hitungStokPakan() {
-  static int stok = 0;
+  // Baca jarak dari sensor ultrasonic
+  long jarak = sensorPakan.read();  // Jarak dalam cm
 
-  if (millis() - waktuTerakhirBacaSensor >= intervalBacaSensor) {
-    waktuTerakhirBacaSensor = millis();
+  Serial.print("Jarak: ");
+  Serial.print(jarak);
+  Serial.println(" cm");
 
-    long jarak = sensorPakan.read();
-    Serial.print("Jarak: ");
-    Serial.print(jarak);
-    Serial.println(" cm");
+  // Hitung tinggi pakan berdasarkan jarak
+  float tinggiPakan = TINGGI_WADAH_PAKAN - jarak;
 
-    float tinggiPakan = TINGGI_WADAH_PAKAN - jarak;
-    stok = (tinggiPakan / TINGGI_WADAH_PAKAN) * STOK_PAKAN_PENUH;
+  // Hitung stok pakan berdasarkan persentase tinggi
+  int stok = (tinggiPakan / TINGGI_WADAH_PAKAN) * STOK_PAKAN_PENUH;
 
-    if (stok < 0) stok = 0;
+  // Pastikan stok tidak negatif
+  if (stok < 0) {
+    stok = 0;
   }
 
-  // Kirim data ke Firebase setiap 5 detik (seperti kode kamu sebelumnya)
-  if (millis() - waktuUpdateFirebaseTerakhir > 6000) {
+  // Kirim data stok pakan ke Firebase setiap 5 detik
+  if (millis() - waktuUpdateFirebaseTerakhir > 5000) {
     kirimStokPakanKeFirebase(stok);
-    waktuUpdateFirebaseTerakhir = millis();
   }
 
   return stok;

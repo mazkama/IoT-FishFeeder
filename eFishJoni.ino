@@ -584,7 +584,7 @@ float hitungStokPakan() {
   }
 
   // Kirim data ke Firebase setiap 5 detik (seperti kode kamu sebelumnya)
-  if (millis() - waktuUpdateFirebaseTerakhir > 5000) {
+  if (millis() - waktuUpdateFirebaseTerakhir > 6000) {
     kirimStokPakanKeFirebase(stok);
     waktuUpdateFirebaseTerakhir = millis();
   }

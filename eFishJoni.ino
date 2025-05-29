@@ -51,12 +51,12 @@ bool sudahRestartHariIni = false; // Untuk menandai restart harian
 int nilaiKekeruhan = 0;  // Nilai kekeruhan air
 
 // Konstanta dan variabel untuk level air
-const int LEVEL_AIR_MIN = 40;  // Level air minimum (dalam cm)
+const int LEVEL_AIR_MIN = 25;  // Level air minimum (dalam cm)
 const int LEVEL_AIR_MAX = 20;  // Level air maksimum (dalam cm)
 int batasKekeruhan = 30;       // Batas nilai kekeruhan (dapat diubah melalui Firebase)
 
 // Konstanta buffer Median Filter (untuk filter data)
-const int bufferSize = 9;
+const int bufferSize = 7;
 int adcBuffer[bufferSize];
 
 // Konstanta dan variabel untuk pakan
@@ -546,20 +546,20 @@ int cekNilaiKekeruhan() {
   int16_t nilaiMentah = ads.readADC_SingleEnded(0);
 
   // Konversi nilai ADC menjadi kekeruhan (0–100 NTU misalnya)
-  float kekeruhan = mapFloat(nilaiMentah, 16700, 19000, 100, 0);
+  float kekeruhan = mapFloat(medianFilter(nilaiMentah), 10000, 19000, 100, 0);
   kekeruhan = constrain(kekeruhan, 0, 100); // Pastikan dalam rentang 0-100
 
   int kekeruhanNTU = round(kekeruhan); // Bulatkan ke NTU
 
   Serial.print("Nilai Kekeruhan: ");
-  Serial.println(kekeruhan);
+  Serial.println(kekeruhanNTU);
 
   // Kirim data kekeruhan ke Firebase setiap 5 detik
   if (millis() - waktuUpdateFirebaseTerakhir > 5000) {
-    kirimKekeruhanKeFirebase(kekeruhan);
+    kirimKekeruhanKeFirebase(kekeruhanNTU);
   }
 
-  return medianFilter(kekeruhanNTU);
+  return kekeruhanNTU;
 }
 
 // Fungsi untuk menghitung stok pakan yang tersisa

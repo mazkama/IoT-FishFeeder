@@ -194,14 +194,7 @@ void setup() {
   
   // Inisialisasi buffer dengan nilai awal
   for (int i = 0; i < bufferSize; i++) {
-    int16_t nilaiMentah = ads.readADC_SingleEnded(0);  // Baca nilai ADC dari kanal 0
-  
-    // Konversi nilai ADC menjadi kekeruhan (misalnya 0–100 NTU)
-    float kekeruhan = mapFloat(nilaiMentah, 16700, 19000, 100, 0);
-    kekeruhan = constrain(kekeruhan, 0, 100); // Batasi dalam rentang 0-100 NTU
-  
-    int kekeruhanNTU = round(kekeruhan); // Bulatkan ke integer
-    adcBuffer[i] = kekeruhanNTU;         // Simpan ke buffer
+   adcBuffer[i] = 0;
   }
 
   // Ambil jadwal dan batas kekeruhan dari Firebase

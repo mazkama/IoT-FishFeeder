@@ -585,48 +585,44 @@ float hitungStokPakan() {
 
 // Fungsi untuk memberikan pakan
 void berikanPakan() {
-  // Cek apakah stok pakan mencukupi
-  if (stokPakan >= beratPakanPerPemberian) {
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Pemberian: " + String(beratPakanPerPemberian) + " Gram");
+  // Hitung stok sisa (opsional, tergantung logika update stok Anda)
+  int sisaStok = stokPakan - beratPakanPerPemberian;
+  if (sisaStok < 0) sisaStok = 0;
 
-    // Aktifkan relay pemberi pakan
-    digitalWrite(RELAY_PAKAN, HIGH);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Pemberian: " + String(beratPakanPerPemberian) + " Gram");
 
-    // Simulasi pemberian pakan secara bertahap
-    int jumlahPakan = 0;
-    while (jumlahPakan < beratPakanPerPemberian) {
-      jumlahPakan++;
-      lcd.setCursor(0, 1);
-      lcd.print("Proses: " + String(jumlahPakan) + " Gram");
-      delay(1000);
-    }
+  // Aktifkan relay pemberi pakan
+  digitalWrite(RELAY_PAKAN, HIGH);
 
-    // Matikan relay pemberi pakan
-    digitalWrite(RELAY_PAKAN, LOW);
-
-    // Tampilkan pesan sukses
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Pemberian " + String(jumlahPakan) + " Gram");
+  // Simulasi pemberian pakan secara bertahap
+  int jumlahPakan = 0;
+  while (jumlahPakan < beratPakanPerPemberian) {
+    jumlahPakan++;
     lcd.setCursor(0, 1);
-    lcd.print("Pakan Berhasil...");
-
-    // Kirim status berhasil ke Firebase
-    kirimRiwayatPakanKeFirebase("Berhasil");
-  } else {
-    // Stok pakan tidak mencukupi
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Stok pakan habis");
-
-    // Kirim status gagal ke Firebase
-    kirimRiwayatPakanKeFirebase("Gagal");
-
-    delay(2000);
-    lcd.clear();
+    lcd.print("Proses: " + String(jumlahPakan) + " Gram");
+    delay(1000);
   }
+
+  // Matikan relay pemberi pakan
+  digitalWrite(RELAY_PAKAN, LOW);
+
+  // Tampilkan pesan sukses
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Pemberian " + String(jumlahPakan) + " Gram");
+  lcd.setCursor(0, 1);
+  lcd.print("Pakan Berhasil...");
+
+  // Kirim status ke Firebase sesuai kondisi stok
+  String status;
+  if (stokPakan < beratPakanPerPemberian) {
+    status = "Berhasil - Stok " + String(sisaStok) + " Gram, Tetap";
+  } else {
+    status = "Berhasil";
+  }
+  kirimRiwayatPakanKeFirebase(status);
 }
 
 // Fungsi untuk mengirim riwayat pemberian pakan ke Firebase
